@@ -26,7 +26,8 @@ async function run() {
       .db("bistroBossDB")
       .collection("menuCollection");
     const carts = client.db("bistroBossDB").collection("carts");
-
+    const users = client.db("bistroBossDB").collection("users");
+   
     app.get("/menu", async (req, res) => {
       const result = await menuCollection.find().toArray();
       res.send(result);
@@ -38,6 +39,20 @@ async function run() {
       const result = await carts.insertOne(cart);
       res.send(result);
     });
+
+    //add user after registration
+
+    app.post('/users',async(req,res)=>{
+      
+      const user=req.body;
+      const query={email:user.email}
+      const isExist=await users.findOne(query)
+      if(isExist){
+        return res.send({message:'Already Exit',insertedId:null})
+      }
+      const result=await users.insertOne(user)
+      res.send(result)
+    })
 
     //get item from cart
     app.get("/carts", async (req, res) => {
