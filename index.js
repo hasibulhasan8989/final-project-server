@@ -9,34 +9,6 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization.split(" ")[1];
-  if (!token) {
-    return res.status(401).send({ message: "Unauthorized" });
-  }
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).send({ message: "Unauthorized" });
-    }
-    req.decoded = decoded;
-    next();
-  });
-};
-
-const verifyAdmin = async (req, res, next) => {
-  const email = req.decoded.user;
-  console.log(email);
-  const query = { email: email };
-
-  const user = await users.findOne(query);
-  console.log(user);
-  const isAdmin = user.role === "admin";
-  if (!isAdmin) {
-    return res.status(403).send({ message: "forbidden access" });
-  }
-  next();
-};
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.zsgh3ij.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -58,29 +30,89 @@ async function run() {
     const carts = client.db("bistroBossDB").collection("carts");
     const users = client.db("bistroBossDB").collection("users");
 
+    //____________________
+    // middle ware
+    //______________________
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.user;
+      const query = { email: email };
+      const user = await users.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    const verifyToken = (req, res, next) => {
+      const token = req.headers.authorization.split(" ")[1];
+      if (!token) {
+        return res.status(401).send({ message: "Unauthorized" });
+      }
+
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "Unauthorized" });
+        }
+        req.decoded = decoded;
+        next();
+      });
+    };
+    //---------------------------------------------------
+
+    // get menu item
     app.get("/menu", async (req, res) => {
       const result = await menuCollection.find().toArray();
       res.send(result);
     });
 
+    
+    // get 1 menu item by id
+    app.get("/menu/:id", async (req, res) => {
+      const id=req.params.id
+      console.log(id)
+      const query={_id : new ObjectId(id)}
+      const result = await menuCollection.findOne(query)
+      console.log(result)
+      res.send(result);
+    });
 
-// middle ware
+    // UPDATE 1 menu item by id
+    app.patch("/menu/:id", async (req, res) => {
+      const id=req.params.id
+      const menuItem=req.body
+      const updateDoc={
+        $set:{
+          name:menuItem.name,
+          recipe:menuItem.recipe,
+          price:menuItem.price,
+          category:menuItem.category,
+          image:menuItem.image
+        }
+      }
+      const query={_id : new ObjectId(id)}
+      const result = await menuCollection.updateOne(query,updateDoc)
+      res.send(result);
+    });
 
-const verifyAdmin = async (req, res, next) => {
-  const email = req.decoded.user;
-  console.log(email);
-  const query = { email: email };
 
-  const user = await users.findOne(query);
-  console.log(user);
-  const isAdmin = user.role === "admin";
-  if (!isAdmin) {
-    return res.status(403).send({ message: "forbidden access" });
-  }
-  next();
-};
+    // post a menu item
 
+    app.post("/menu", verifyToken, verifyAdmin, async (req, res) => {
+      const menuItem = req.body;
+      const result = await menuCollection.insertOne(menuItem);
+      res.send(result);
+    });
 
+    // -----Delete A Menu------//
+
+    app.delete('/menu/:id',verifyToken,verifyAdmin, async(req,res)=>{
+      const id=req.params.id
+      const query={_id:new ObjectId(id)}
+      const result=await menuCollection.deleteOne(query)
+      res.send(result)
+    })
 
     ///jwt token
     app.post("/jwt", (req, res) => {
@@ -138,8 +170,16 @@ const verifyAdmin = async (req, res, next) => {
 
     //delete a user
     app.delete("/users/:id", async (req, res) => {
+      const email = req.query.email;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
+      const user = await users.findOne(query);
+      const userEmail = user.email;
+
+      if (email === userEmail) {
+        return res.send({ message: "Unknown" });
+      }
+
       const result = await users.deleteOne(query);
       res.send(result);
     });
