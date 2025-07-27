@@ -22,7 +22,7 @@ const client = new MongoClient(uri, {
 });
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     const menuCollection = client
       .db("bistroBossDB")
@@ -36,7 +36,7 @@ async function run() {
     //______________________
 
     const verifyAdmin = async (req, res, next) => {
-      const email = req.decoded.user;
+      const email = req.decoded;
       const query = { email: email };
       const user = await users.findOne(query);
       const isAdmin = user?.role === "admin";
@@ -56,7 +56,7 @@ async function run() {
         if (err) {
           return res.status(401).send({ message: "Unauthorized" });
         }
-        req.decoded = decoded;
+        req.decoded = decoded.user;
         next();
       });
     };
@@ -125,12 +125,14 @@ async function run() {
 
     //check admin
 
-    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+    app.get("/users/admin/:email",verifyToken,  async (req, res) => {
       const userEmail = req.params.email;
 
-      if (userEmail !== req.decoded.user) {
+      if (userEmail !== req.decoded) {
+
         return res.status(403).send({ message: "forbidden access" });
       }
+      console.log(userEmail, req.decoded)
       const query = { email: userEmail };
       const user = await users.findOne(query);
       let admin = false;
@@ -249,10 +251,30 @@ async function run() {
       res.send({ result, deleteResult });
     });
 
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // admin stats
+
+    app.get('/admin-stats',async(req,res)=>{
+      const user=await users.estimatedDocumentCount()
+      const products=await menuCollection.estimatedDocumentCount()
+      const orders=await paymentCollection.estimatedDocumentCount()
+      let revenue=await paymentCollection.aggregate([
+        {
+          $group:{
+            _id:null,
+            totalPrice:{$sum:'$price'}
+          }
+        }
+      ]).toArray()
+
+      const totalPrice=revenue[0]?.totalPrice || 0
+
+      res.send({users: user,products,orders,totalPrice})
+    })
+
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
